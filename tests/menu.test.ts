@@ -48,6 +48,7 @@ function harness(statuses = new Map<string, string>()) {
 		modelRegistry: { getAvailable: () => [] },
 		ui: {
 			notify: (message: string, type: string) => notifications.push({ message, type }),
+			setWorkingMessage: () => {},
 			setFooter: (factory: Function | undefined) => {
 				footer?.dispose?.();
 				footer = factory?.(tui, theme, { getExtensionStatuses: () => statuses });

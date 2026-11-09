@@ -150,7 +150,7 @@ const SEGMENT_DESCRIPTIONS: Record<SegmentName, string> = {
 	cost: "Show estimated recorded session cost, not an invoice. Hidden until usage is available.",
 	tokens: "Show recorded input and output token totals, including cache usage.",
 	cwd: "Show this session's directory, not the directory of a tool's shell.",
-	progress: "Show live activity updates. Uses extra model calls; choose the progress model below.",
+	progress: "Show live activity updates above the editor. Uses extra model calls; choose the progress model below.",
 	extensions: "Show badges published by other extensions. Choose individual badges below.",
 };
 // Advertise tasks, not the legacy command groups. Old spellings still work.
@@ -350,47 +350,6 @@ export function layoutFooter(
 	}
 	// A terminal narrower than thinking + context cannot show every core value.
 	return truncateToWidth(line(), width, "…");
-}
-
-/** Width the footer would need if nothing yielded, before any compaction. */
-function naturalFooterWidth(
-	segments: readonly FooterSegment[],
-	badges: readonly string[],
-	divider: string,
-): number {
-	const separator = `  ${divider}  `;
-	const widths = segments
-		.filter((segment) => segment.text)
-		.map((segment) => visibleWidth(segment.text));
-	if (badges.length > 0) widths.push(visibleWidth(badges.join(separator)));
-	return widths.reduce((sum, value) => sum + value, 0) +
-		Math.max(0, widths.length - 1) * visibleWidth(separator);
-}
-
-/**
- * One line when the footer fits as built; otherwise the active task moves to
- * its own line above the model / thinking / context line so neither has to be
- * clipped away.
- */
-export function layoutFooterLines(
-	segments: readonly FooterSegment[],
-	badges: readonly string[],
-	width: number,
-	divider = SEGMENT_SEPARATOR,
-): string[] {
-	if (!Number.isFinite(width) || width <= 0) return [""];
-	const columns = Math.floor(width);
-	const task = segments.find((segment) => segment.name === "progress")?.text ?? "";
-	if (task && naturalFooterWidth(segments, badges, divider) > columns) {
-		const core = layoutFooter(
-			segments.filter((segment) => segment.name !== "progress"),
-			badges,
-			columns,
-			divider,
-		);
-		return [truncateToWidth(task, columns, "…"), core];
-	}
-	return [layoutFooter(segments, badges, columns, divider)];
 }
 
 function thinkingColor(level: string): ThemeColor {
@@ -990,6 +949,8 @@ class FooterProgressEngine {
 	constructor(
 		private readonly requestRender: () => void,
 		private readonly createUsageRecorder: (ctx: ExtensionContext) => (usage: Usage) => void,
+		/** Publish the task text into the host's working status row above the editor. */
+		private readonly publish: (text: string | null) => void,
 	) {}
 
 	text(): string | null {
@@ -1020,6 +981,7 @@ class FooterProgressEngine {
 		this.lastRenderedText = "";
 		this.acceptedCheckpoints.splice(0);
 		this.latestAcceptedActivityIndex = 0;
+		this.publish(null);
 		this.requestRender();
 		this.enqueue(ctx, this.facts.recordUserMessage(prompt));
 	}
@@ -1086,6 +1048,7 @@ class FooterProgressEngine {
 		this.lastRenderedText = literal;
 		this.lastRenderedActivityIndex = this.facts.latestActivityIndex();
 		this.lastDisplayAt = performance.now();
+		this.publish(literal);
 		this.requestRender();
 	}
 
@@ -1099,6 +1062,7 @@ class FooterProgressEngine {
 		this.acceptedCheckpoints.splice(0);
 		this.pendingDisplayCheckpoint = undefined;
 		this.currentText = null;
+		this.publish(null);
 		this.requestRender();
 	}
 
@@ -1342,6 +1306,7 @@ class FooterProgressEngine {
 		this.lastRenderedText = checkpoint.text;
 		this.lastDisplayAt = performance.now();
 		this.currentText = checkpoint.text;
+		this.publish(checkpoint.text);
 		this.requestRender();
 	}
 
@@ -2077,6 +2042,10 @@ export default function (pi: ExtensionAPI) {
 	};
 	let sessionEpoch = 0;
 	let sessionOpen = false;
+	// The host renders this into its working status row above the editor (the row
+	// that otherwise says "Working..."), so the footer height never changes while
+	// a task appears or disappears.
+	let workingMessageUI: ExtensionContext["ui"] | undefined;
 	const progress = new FooterProgressEngine(refresh, (ctx) => {
 		const epoch = sessionEpoch;
 		return (usage) => {
@@ -2092,6 +2061,11 @@ export default function (pi: ExtensionAPI) {
 				// Usage persistence is best effort; do not discard a valid progress update.
 			}
 		};
+	}, (text) => {
+		if (!workingMessageUI) return;
+		workingMessageUI.setWorkingMessage(
+			visibleSegments.includes("progress") ? text ?? undefined : undefined,
+		);
 	});
 	const restoreStatusFilter = (ctx: ExtensionContext) => {
 		let restoredFilter = readGlobalStatusFilter();
@@ -2540,6 +2514,7 @@ export default function (pi: ExtensionAPI) {
 		progress.shutdown();
 	});
 	pi.on("session_tree", async (_event, ctx) => {
+		workingMessageUI = ctx.hasUI ? ctx.ui : undefined;
 		if (visibleSegments.includes("progress")) progress.startSession(ctx.cwd);
 		else progress.shutdown();
 		restoreStatusFilter(ctx);
@@ -2558,6 +2533,7 @@ export default function (pi: ExtensionAPI) {
 		seenStatusKeys.clear();
 		visibleSegments = readGlobalSegments() ?? DEFAULT_SEGMENTS;
 		showProvider = readGlobalConfig().showProvider ?? false;
+		workingMessageUI = ctx.hasUI ? ctx.ui : undefined;
 		if (visibleSegments.includes("progress")) progress.startSession(ctx.cwd);
 		else progress.shutdown();
 		restoreStatusFilter(ctx);
@@ -2596,8 +2572,6 @@ export default function (pi: ExtensionAPI) {
 					const contextText = usage
 						? `${usage.percent !== null ? `${usage.percent.toFixed(1)}%` : "—%"} / ${formatTokens(usage.contextWindow)}`
 						: "—";
-					const progressText = progress.text();
-
 					const directories = visibleSegments.includes("cwd")
 						? cwdVariants(ctx.cwd, homedir(), cwdWidth).map((text) => theme.fg("accent", text))
 						: [];
@@ -2624,15 +2598,16 @@ export default function (pi: ExtensionAPI) {
 						cost: { text: reportedUsage ? theme.fg("muted", `≈$${metrics.cost.toFixed(3)}`) : "" },
 						tokens: { text: reportedUsage ? theme.fg("muted", `↑${formatTokens(metrics.input)} ↓${formatTokens(metrics.output)}`) : "" },
 						cwd: { text: directories[0] ?? "", alternatives: directories.slice(1) },
-						progress: { text: progressText ? theme.fg("text", progressText) : "" },
+						// The task renders in the working status row above the editor.
+						progress: { text: "" },
 						extensions: { text: "" },
 					};
-					return layoutFooterLines(
+					return [layoutFooter(
 						visibleSegments.map((name) => ({ name, ...renderers[name] })),
 						(extensionStatusParts ?? []).map((part) => theme.fg("text", part)),
 						width,
 						theme.fg("dim", SEGMENT_SEPARATOR),
-					);
+					)];
 				},
 			};
 		});
@@ -2643,6 +2618,10 @@ export default function (pi: ExtensionAPI) {
 		completionModelRegistry = undefined;
 		sessionEpoch++;
 		progress.shutdown();
-		if (ctx.hasUI) ctx.ui.setFooter(undefined);
+		workingMessageUI = undefined;
+		if (ctx.hasUI) {
+			ctx.ui.setWorkingMessage();
+			ctx.ui.setFooter(undefined);
+		}
 	});
 }

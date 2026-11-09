@@ -90,6 +90,7 @@ function harness(cwd: string, statuses = new Map<string, string>()) {
 		sessionManager: { getEntries: () => [], getBranch: () => [] },
 		ui: {
 			notify: () => {},
+			setWorkingMessage: () => {},
 			setFooter: (factory: Function | undefined) => {
 				if (factory) footer = factory(
 					{ requestRender() {} },

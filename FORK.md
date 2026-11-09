@@ -11,10 +11,12 @@ Fork of [tianrendong/pi-bar](https://github.com/tianrendong/pi-bar) with two loc
    The patch resolves auth from `ctx.model` first, so the summary rides the model already loaded, and a
    `progressModel` pin (via `pi-bar.json`, `PI_BAR_PROGRESS_MODEL`, or `/bar`) becomes a fallback only.
 
-2. **Two-line footer under width pressure** (`layoutFooterLines` in `extensions/status-footer.ts`).
-   When the footer cannot fit on one line as built and there is an active task, the task gets its own line above
-   the `model ❯ thinking ❯ context` line instead of being clipped or squeezed to a stub. Badges stay on the core
-   line. Fits on one line as before when everything fits.
+2. **The active task replaces pi's working status text** (`FooterProgressEngine.publish`).
+   Upstream renders the task inside the footer, which grows to two lines when the terminal cannot fit everything and
+   makes the editor jump as tasks appear and disappear. The fork pushes the task text into
+   `ctx.ui.setWorkingMessage()` instead, so it replaces the `── ⠏ Working... ──` row above the editor, the editor
+   never moves, and the footer stays a single `model ❯ thinking ❯ context` line. A new turn or session start
+   restores pi's default working text.
 
 ## Install
 

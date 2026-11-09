@@ -58,6 +58,7 @@ function harness(initialEntries: SessionEntry[] = [], statuses = new Map<string,
 		},
 		ui: {
 			notify: (message: string) => { notifications.push(message); },
+			setWorkingMessage: () => {},
 			setFooter: (factory: Function | undefined) => {
 				footer?.dispose?.();
 				footer = factory?.(tui, theme, { getExtensionStatuses: () => statuses });

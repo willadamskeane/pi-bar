@@ -3,10 +3,11 @@
 [![npm version](https://img.shields.io/npm/v/pi-bar.svg)](https://www.npmjs.com/package/pi-bar)
 [![npm downloads](https://img.shields.io/npm/dm/pi-bar.svg)](https://www.npmjs.com/package/pi-bar)
 
-**Never accidentally run Opus on a typo again.** pi-bar keeps your model, thinking level, context pressure, a live progress update, and any extension statuses visible in pi's footer.
+**Never accidentally run Opus on a typo again.** pi-bar keeps your model, thinking level, context pressure, and any extension statuses visible in pi's footer, and shows the live progress update in the working row above the editor.
 
 ```text
-claude-opus-4.7  ❯  med  ❯  2.6% / 1.0M  ❯  Reviewing package structure  ❯  Plan active  ❯  Queue: 2
+── ⠏ Reviewing package structure ──
+claude-opus-4.7  ❯  med  ❯  2.6% / 1.0M  ❯  Plan active  ❯  Queue: 2
 ```
 
 ![pi-bar with low context usage](https://cdn.jsdelivr.net/npm/pi-bar@0.3.38/assets/screenshot-green.png)
@@ -21,7 +22,7 @@ claude-opus-4.7  ❯  med  ❯  2.6% / 1.0M  ❯  Reviewing package structure  �
 - **Follow what pi is doing** — a one-line progress update keeps the current task visible without scrolling.
 - **Keep extension statuses visible** — statuses other extensions set still appear in the footer.
 
-pi-bar is intentionally tiny: one small extension and no broad behavior changes. It replaces pi's built-in footer with a compact model / thinking / context / progress / extension-status line.
+pi-bar is intentionally tiny: one small extension and no broad behavior changes. It replaces pi's built-in footer with a compact model / thinking / context / extension-status line, and replaces pi's "Working..." text with the current task.
 
 ## Install
 
@@ -41,11 +42,11 @@ The footer adapts to terminal width without extra configuration:
 
 - **Model, thinking level, and context percentage take priority.**
 - Separators have two spaces on each side by default, for a roomier display.
-- **Progress text shrinks first.** If space is still tight, separator padding reduces to one space per side before compacting content. CWD then compacts from its preferred path to `parent/project`, then `project`; context window size is omitted when needed. An enabled provider prefix can yield before the model name is clipped.
-- **When the whole footer cannot fit on one line and there is an active task, it wraps to two lines:** the task sits on its own line above the model ❯ thinking ❯ context line, so neither the task nor the core values are clipped away. Badges stay on the core line.
+- Separator padding reduces to one space per side before content is compacted. CWD then compacts from its preferred path to `parent/project`, then `project`; context window size is omitted when needed. An enabled provider prefix can yield before the model name is clipped.
+- **The active task never occupies the footer.** It replaces pi's "Working..." text in the working status row above the editor, so the footer stays one line and the editor does not move when a task starts or ends. The host truncates a long task to the terminal width.
 - Optional token totals, cost, and cache-hit ratio yield whole under width pressure, before overflowing extension badges. Numeric metrics are never shown partially.
 - Extension badges stay in their published order. Badges that cannot fit are hidden whole, with `+N` showing how many are behind the overflow. Open `/bar badges` to inspect their text and visibility by key.
-- On very narrow terminals, progress and CWD yield to core information. If even the core cannot fit, the model name is truncated first. At extreme widths, not every value or overflow count can remain visible.
+- On very narrow terminals, CWD yields to core information. If even the core cannot fit, the model name is truncated first. At extreme widths, not every value or overflow count can remain visible.
 - Widening the terminal restores the full display. Thinking and context retain their semantic colors throughout.
 
 Existing visibility settings still apply. CWD, usage metrics, and the provider prefix are opt-in; the default footer is unchanged.

@@ -72,6 +72,7 @@ function harness(initialModels = [gpt, haiku]) {
 	let availabilityReads = 0;
 	const authRequests: string[] = [];
 	const notifications: Array<{ message: string; type: string }> = [];
+	const workingMessages: Array<string | undefined> = [];
 	const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
 	const tui = { requestRender() {} };
 	const mainModel = model("chat-provider", "chat-model");
@@ -90,6 +91,7 @@ function harness(initialModels = [gpt, haiku]) {
 		},
 		ui: {
 			notify: (message: string, type: string) => notifications.push({ message, type }),
+			setWorkingMessage: (message?: string) => workingMessages.push(message),
 			setFooter: (factory: Function | undefined) => {
 				footer = factory?.(tui, theme, { getExtensionStatuses: () => new Map() });
 			},
@@ -108,13 +110,14 @@ function harness(initialModels = [gpt, haiku]) {
 	statusFooter(pi);
 	const emit = async (name: string, event: unknown = {}) => handlers.get(name)?.(event as never, ctx);
 	return {
-		ctx, mainModel, authRequests, notifications, emit,
+		ctx, mainModel, authRequests, notifications, workingMessages, emit,
 		start: () => emit("session_start"),
 		shutdown: () => emit("session_shutdown"),
 		command: (args: string) => command.handler(args, ctx as ExtensionCommandContext),
 		complete: (prefix: string) => command.getArgumentCompletions!(prefix),
 		render: () => footer!.render(200)[0],
-		renderLines: (width: number) => footer!.render(width),
+		renderAt: (width: number) => footer!.render(width),
+		workingMessage: () => workingMessages.at(-1),
 		uiLines: (width = 160) => custom!.render(width),
 		uiText: () => stripVTControlCharacters(custom!.render(160).join("\n")),
 		input: (data: string) => custom!.handleInput!(data),
@@ -469,17 +472,17 @@ test("changing models cancels old-provider jobs and uses the new model without r
 	assert.equal(pending[0].signal?.aborted, true);
 	pending[0].finish("Reviewing old provider task");
 	await nextTick();
-	assert.doesNotMatch(h.render(), /old provider/);
+	assert.doesNotMatch(String(h.workingMessage() ?? ""), /old provider/);
 
 	await h.emit("before_agent_start", { prompt: "New provider task" });
 	await waitFor(() => pending.length === 2);
 	assert.equal(pending[1].model, OPENAI);
 	assert.deepEqual(h.authRequests, [ANTHROPIC, OPENAI]);
 	pending[1].finish("Reviewing new provider task");
-	await waitFor(() => h.render().includes("Reviewing new provider task"));
+	await waitFor(() => h.workingMessage() === "Reviewing new provider task");
 	assert.strictEqual(h.ctx.model, h.mainModel);
 	await choose(h, "gpt");
-	assert.match(h.render(), /Reviewing new provider task/, "reselecting the same model does not reset progress");
+	assert.equal(h.workingMessage(), "Reviewing new provider task", "reselecting the same model does not reset progress");
 
 	await choose(h, "Auto");
 	await h.emit("before_agent_start", { prompt: "Automatic model task" });
@@ -489,12 +492,12 @@ test("changing models cancels old-provider jobs and uses the new model without r
 	assert.equal(pending[2].signal?.aborted, true, "command cancels old-model jobs like the picker");
 	pending[2].finish("Reviewing automatic model task");
 	await nextTick();
-	assert.doesNotMatch(h.render(), /automatic model task/);
+	assert.doesNotMatch(String(h.workingMessage() ?? ""), /automatic model task/);
 	await h.emit("before_agent_start", { prompt: "Command-selected task" });
 	await waitFor(() => pending.length === 4);
 	assert.equal(pending[3].model, OPENAI);
 	pending[3].finish("Reviewing command-selected task");
-	await waitFor(() => h.render().includes("Reviewing command-selected task"));
+	await waitFor(() => h.workingMessage() === "Reviewing command-selected task");
 	assert.strictEqual(h.ctx.model, h.mainModel);
 });
 
@@ -534,10 +537,10 @@ test("progress summaries prefer the session model over a pin and the fast-model 
 	assert.equal(pending[0].model, "chat-provider/chat-model", "the loaded session model serves the summary");
 	assert.deepEqual(h.authRequests, ["chat-provider/chat-model"], "the pinned and fast models are not resolved");
 	pending[0].finish("Reviewing session model task");
-	await waitFor(() => h.render().includes("Reviewing session model task"));
+	await waitFor(() => h.workingMessage() === "Reviewing session model task");
 });
 
-test("footer renders the active task above the core line when the terminal is narrow", async (t) => {
+test("the active task replaces the working row text and leaves the footer single-line", async (t) => {
 	const pending: Array<{ model: string; finish(text: string): void }> = [];
 	const stream = (item: Model<any>, _context: unknown) => {
 		const events = createAssistantMessageEventStream();
@@ -567,15 +570,15 @@ test("footer renders the active task above the core line when the terminal is na
 		unregisterApiProviders(SOURCE);
 	});
 	await h.start();
+	assert.equal(h.workingMessage(), undefined, "session start restores the host default working text");
 	await h.emit("before_agent_start", { prompt: "Refactoring the footer layout" });
+	assert.equal(h.workingMessage(), undefined, "a new turn clears the previous task");
 	await waitFor(() => pending.length === 1);
 	pending[0].finish("Refactoring the footer layout");
-	await waitFor(() => h.render().includes("Refactoring the footer layout"));
+	await waitFor(() => h.workingMessage() === "Refactoring the footer layout");
 
-	const lines = h.renderLines(40);
-	assert.equal(lines.length, 2, JSON.stringify(lines));
-	assert.match(lines[0], /Refactoring the footer layout/);
-	assert.match(lines[1], /chat-model/);
-	for (const line of lines) assert.ok(visibleWidth(line) <= 40, JSON.stringify(line));
-	assert.equal(h.renderLines(200).length, 1, "wide terminals keep a single line");
+	const footer = h.render();
+	assert.doesNotMatch(footer, /Refactoring the footer layout/, "the task is not duplicated in the footer");
+	assert.match(footer, /chat-model/);
+	assert.equal(h.renderAt(40).length, 1, "the footer stays one line at narrow widths");
 });
