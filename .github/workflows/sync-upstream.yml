@@ -1,0 +1,59 @@
+name: sync-upstream
+
+# Scheduled workflows only run from the default branch, so this file lives on
+# `main`. Fork `main` carries the local patches and is rebased onto
+# `tianrendong/pi-bar` main; a rebase conflict fails the job (and notifies),
+# which is the signal to reconcile the patch by hand.
+
+on:
+  schedule:
+    - cron: "43 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out fork main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream and origin
+        run: |
+          git remote add upstream https://github.com/tianrendong/pi-bar.git
+          git fetch --prune upstream main
+          git fetch origin main
+
+      - name: Rebase fork patches onto upstream/main
+        run: |
+          old_main=$(git rev-parse origin/main)
+          echo "OLD_MAIN=$old_main" >> "$GITHUB_ENV"
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "fork main already contains upstream/main"
+            exit 0
+          fi
+          git rebase upstream/main
+
+      - name: Push rebased main
+        run: |
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            if [ "$(git rev-parse HEAD)" = "$OLD_MAIN" ]; then
+              echo "nothing to push"
+              exit 0
+            fi
+          fi
+          git push --force-with-lease=refs/heads/main:"$OLD_MAIN" origin HEAD:refs/heads/main

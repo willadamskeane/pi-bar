@@ -41,7 +41,8 @@ The footer adapts to terminal width without extra configuration:
 
 - **Model, thinking level, and context percentage take priority.**
 - Separators have two spaces on each side by default, for a roomier display.
-- Progress text shrinks first. If space is still tight, separator padding reduces to one space per side before compacting content. CWD then compacts from its preferred path to `parent/project`, then `project`; context window size is omitted when needed. An enabled provider prefix can yield before the model name is clipped.
+- **Progress text shrinks first.** If space is still tight, separator padding reduces to one space per side before compacting content. CWD then compacts from its preferred path to `parent/project`, then `project`; context window size is omitted when needed. An enabled provider prefix can yield before the model name is clipped.
+- **When the whole footer cannot fit on one line and there is an active task, it wraps to two lines:** the task sits on its own line above the model ❯ thinking ❯ context line, so neither the task nor the core values are clipped away. Badges stay on the core line.
 - Optional token totals, cost, and cache-hit ratio yield whole under width pressure, before overflowing extension badges. Numeric metrics are never shown partially.
 - Extension badges stay in their published order. Badges that cannot fit are hidden whole, with `+N` showing how many are behind the overflow. Open `/bar badges` to inspect their text and visibility by key.
 - On very narrow terminals, progress and CWD yield to core information. If even the core cannot fit, the model name is truncated first. At extreme widths, not every value or overflow count can remain visible.

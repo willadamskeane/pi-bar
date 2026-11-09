@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { posix, win32 } from "node:path";
 import { test } from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { cwdVariants, formatExtensionStatuses, layoutFooter, type FooterSegment } from "../extensions/status-footer.ts";
+import { cwdVariants, formatExtensionStatuses, layoutFooter, layoutFooterLines, type FooterSegment } from "../extensions/status-footer.ts";
 
 const segments: FooterSegment[] = [
 	{ name: "model", text: "claude-opus-4.7" },
@@ -209,4 +209,54 @@ test("semantic colors survive layout and resizing restores full content", () => 
 	assert.match(narrow, /\x1b\[35mmax/);
 	assert.match(narrow, /\x1b\[31m95%/);
 	assert.equal(layoutFooter(core, [], 80), wide);
+});
+
+test("responsive footer keeps one line when everything fits", () => {
+	assert.deepEqual(layoutFooterLines(segments, badges, 240), [layoutFooter(segments, badges, 240)]);
+	assert.deepEqual(layoutFooterLines(segments, badges, NaN), [""]);
+	assert.deepEqual(layoutFooterLines(segments, badges, -1), [""]);
+});
+
+test("narrow footer moves the active task onto its own line above the core line", () => {
+	const lines = layoutFooterLines(segments, badges, 100);
+	assert.equal(lines.length, 2);
+	assert.equal(lines[0], "Fixing footer layout and reviewing regression coverage");
+	assert.match(lines[1], /claude-opus-4\.7/);
+	assert.match(lines[1], /(medium|med)/);
+	assert.match(lines[1], /12\.0%/);
+	assert.ok(!lines[1].includes("Fixing footer layout"), "task is not repeated on the core line");
+	for (const line of lines) assert.ok(visibleWidth(line) <= 100);
+	for (const badge of badges) assert.ok(lines[1].includes(badge), "badges stay with the core line");
+});
+
+test("active task line truncates instead of dropping, and core line still compacts", () => {
+	const lines = layoutFooterLines(segments, badges, 40);
+	assert.equal(lines.length, 2);
+	assert.ok(visibleWidth(lines[0]) <= 40);
+	assert.ok(lines[0].includes("…"), JSON.stringify(lines[0]));
+	for (const line of lines) assert.ok(visibleWidth(line) <= 40);
+});
+
+test("no split without an active task", () => {
+	const idle = segments.map((segment) => segment.name === "progress" ? { ...segment, text: "" } : segment);
+	assert.deepEqual(layoutFooterLines(idle, badges, 100), [layoutFooter(idle, badges, 100)]);
+	assert.equal(layoutFooterLines([{ name: "model", text: "model" }], [], 40).length, 1);
+});
+
+test("responsive footer stays bounded at every width with Unicode and ANSI colors", () => {
+	const color = (text: string) => `\x1b[38;2;120;80;200m${text}\x1b[39m`;
+	const colored = segments.map((segment) => ({
+		...segment,
+		text: color(segment.name === "progress" ? "正在检查👩‍💻代码".repeat(20) : segment.text),
+		alternatives: segment.alternatives?.map(color),
+	}));
+	const coloredBadges = [color("缓存 90%"), color("👩‍💻 working")];
+	for (let width = 0; width <= 180; width++) {
+		const lines = layoutFooterLines(colored, coloredBadges, width, color("❯"));
+		assert.ok(lines.length >= 1 && lines.length <= 2, `${width}: ${lines.length} lines`);
+		for (const line of lines) {
+			assert.ok(visibleWidth(line) <= width, `${width}: ${JSON.stringify(line)}`);
+			assert.doesNotMatch(line, /[\r\n\ufffd]/);
+		}
+	}
 });

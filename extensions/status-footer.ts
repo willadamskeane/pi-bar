@@ -352,6 +352,47 @@ export function layoutFooter(
 	return truncateToWidth(line(), width, "…");
 }
 
+/** Width the footer would need if nothing yielded, before any compaction. */
+function naturalFooterWidth(
+	segments: readonly FooterSegment[],
+	badges: readonly string[],
+	divider: string,
+): number {
+	const separator = `  ${divider}  `;
+	const widths = segments
+		.filter((segment) => segment.text)
+		.map((segment) => visibleWidth(segment.text));
+	if (badges.length > 0) widths.push(visibleWidth(badges.join(separator)));
+	return widths.reduce((sum, value) => sum + value, 0) +
+		Math.max(0, widths.length - 1) * visibleWidth(separator);
+}
+
+/**
+ * One line when the footer fits as built; otherwise the active task moves to
+ * its own line above the model / thinking / context line so neither has to be
+ * clipped away.
+ */
+export function layoutFooterLines(
+	segments: readonly FooterSegment[],
+	badges: readonly string[],
+	width: number,
+	divider = SEGMENT_SEPARATOR,
+): string[] {
+	if (!Number.isFinite(width) || width <= 0) return [""];
+	const columns = Math.floor(width);
+	const task = segments.find((segment) => segment.name === "progress")?.text ?? "";
+	if (task && naturalFooterWidth(segments, badges, divider) > columns) {
+		const core = layoutFooter(
+			segments.filter((segment) => segment.name !== "progress"),
+			badges,
+			columns,
+			divider,
+		);
+		return [truncateToWidth(task, columns, "…"), core];
+	}
+	return [layoutFooter(segments, badges, columns, divider)];
+}
+
 function thinkingColor(level: string): ThemeColor {
 	switch (level) {
 		case "off":
@@ -575,6 +616,19 @@ async function getFastProgressModelAuth(
 	ctx: ExtensionContext,
 	configuredModel?: ProgressModelPreference,
 ): Promise<FastModelAuth | undefined> {
+	// Prefer the session's active model. A fixed fast model would make
+	// llama-swap unload the serving model and reload another one for every
+	// progress checkpoint; following the session model never triggers a swap.
+	// An explicit progressModel pin still acts as a fallback below.
+	const sessionModel = ctx.model;
+	if (sessionModel) {
+		const sessionAuth = await getModelAuth(ctx, {
+			provider: sessionModel.provider,
+			id: sessionModel.id,
+		});
+		if (sessionAuth) return sessionAuth;
+	}
+
 	if (configuredModel) {
 		const configuredAuth = await getModelAuth(ctx, configuredModel);
 		if (configuredAuth) return configuredAuth;
@@ -2573,12 +2627,12 @@ export default function (pi: ExtensionAPI) {
 						progress: { text: progressText ? theme.fg("text", progressText) : "" },
 						extensions: { text: "" },
 					};
-					return [layoutFooter(
+					return layoutFooterLines(
 						visibleSegments.map((name) => ({ name, ...renderers[name] })),
 						(extensionStatusParts ?? []).map((part) => theme.fg("text", part)),
 						width,
 						theme.fg("dim", SEGMENT_SEPARATOR),
-					)];
+					);
 				},
 			};
 		});

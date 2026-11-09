@@ -496,3 +496,42 @@ test("changing models cancels old-provider jobs and uses the new model without r
 	await waitFor(() => h.render().includes("Reviewing command-selected task"));
 	assert.strictEqual(h.ctx.model, h.mainModel);
 });
+
+test("progress summaries prefer the session model over a pin and the fast-model list", async (t) => {
+	const pending: Array<{ model: string; finish(text: string): void }> = [];
+	const stream = (item: Model<any>, _context: unknown) => {
+		const events = createAssistantMessageEventStream();
+		let finished = false;
+		pending.push({
+			model: `${item.provider}/${item.id}`,
+			finish: (text) => {
+				if (finished) return;
+				finished = true;
+				events.push({
+					type: "done", reason: "stop",
+					message: assistant(makeUsage(), {
+						api: API, provider: item.provider, model: item.id,
+						content: [{ type: "text", text }],
+					}),
+				});
+				events.end();
+			},
+		});
+		return events;
+	};
+	registerApiProvider({ api: API, stream, streamSimple: stream }, SOURCE);
+	writeJson(config, { progressModel: ANTHROPIC });
+	const h = harness([model("chat-provider", "chat-model"), gpt, haiku]);
+	t.after(async () => {
+		await h.shutdown();
+		for (const request of pending) request.finish("Reviewing cleanup");
+		unregisterApiProviders(SOURCE);
+	});
+	await h.start();
+	await h.emit("before_agent_start", { prompt: "Session model task" });
+	await waitFor(() => pending.length === 1);
+	assert.equal(pending[0].model, "chat-provider/chat-model", "the loaded session model serves the summary");
+	assert.deepEqual(h.authRequests, ["chat-provider/chat-model"], "the pinned and fast models are not resolved");
+	pending[0].finish("Reviewing session model task");
+	await waitFor(() => h.render().includes("Reviewing session model task"));
+});
