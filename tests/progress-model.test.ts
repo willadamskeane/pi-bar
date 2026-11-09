@@ -114,6 +114,7 @@ function harness(initialModels = [gpt, haiku]) {
 		command: (args: string) => command.handler(args, ctx as ExtensionCommandContext),
 		complete: (prefix: string) => command.getArgumentCompletions!(prefix),
 		render: () => footer!.render(200)[0],
+		renderLines: (width: number) => footer!.render(width),
 		uiLines: (width = 160) => custom!.render(width),
 		uiText: () => stripVTControlCharacters(custom!.render(160).join("\n")),
 		input: (data: string) => custom!.handleInput!(data),
@@ -534,4 +535,47 @@ test("progress summaries prefer the session model over a pin and the fast-model 
 	assert.deepEqual(h.authRequests, ["chat-provider/chat-model"], "the pinned and fast models are not resolved");
 	pending[0].finish("Reviewing session model task");
 	await waitFor(() => h.render().includes("Reviewing session model task"));
+});
+
+test("footer renders the active task above the core line when the terminal is narrow", async (t) => {
+	const pending: Array<{ model: string; finish(text: string): void }> = [];
+	const stream = (item: Model<any>, _context: unknown) => {
+		const events = createAssistantMessageEventStream();
+		let finished = false;
+		pending.push({
+			model: `${item.provider}/${item.id}`,
+			finish: (text) => {
+				if (finished) return;
+				finished = true;
+				events.push({
+					type: "done", reason: "stop",
+					message: assistant(makeUsage(), {
+						api: API, provider: item.provider, model: item.id,
+						content: [{ type: "text", text }],
+					}),
+				});
+				events.end();
+			},
+		});
+		return events;
+	};
+	registerApiProvider({ api: API, stream, streamSimple: stream }, SOURCE);
+	const h = harness([model("chat-provider", "chat-model"), gpt, haiku]);
+	t.after(async () => {
+		await h.shutdown();
+		for (const request of pending) request.finish("Reviewing cleanup");
+		unregisterApiProviders(SOURCE);
+	});
+	await h.start();
+	await h.emit("before_agent_start", { prompt: "Refactoring the footer layout" });
+	await waitFor(() => pending.length === 1);
+	pending[0].finish("Refactoring the footer layout");
+	await waitFor(() => h.render().includes("Refactoring the footer layout"));
+
+	const lines = h.renderLines(40);
+	assert.equal(lines.length, 2, JSON.stringify(lines));
+	assert.match(lines[0], /Refactoring the footer layout/);
+	assert.match(lines[1], /chat-model/);
+	for (const line of lines) assert.ok(visibleWidth(line) <= 40, JSON.stringify(line));
+	assert.equal(h.renderLines(200).length, 1, "wide terminals keep a single line");
 });
