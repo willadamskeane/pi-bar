@@ -18,6 +18,12 @@ Fork of [tianrendong/pi-bar](https://github.com/tianrendong/pi-bar) with two loc
    never moves, and the footer stays a single `model ❯ thinking ❯ context` line. A new turn or session start
    restores pi's default working text.
 
+3. **Model labels follow the provider-registered display name** (`formatModelName`).
+   Upstream renders the model id. The fork renders `Model.name` when a provider supplies one, so catalog renames
+   (the AI workstation publishes `model_name` from `etc/ai-workstation/model-profile.json`) show up without a pi-bar
+   mapping. It strips a trailing ` (default)` routing marker and a blank name falls back to the id with its
+   namespace and trailing date stamp removed.
+
 ## Install
 
 ```bash

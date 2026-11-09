@@ -40,7 +40,7 @@ If pi is already running after install, reload resources:
 
 The footer adapts to terminal width without extra configuration:
 
-- **Model, thinking level, and context percentage take priority.**
+- **Model, thinking level, and context percentage take priority.** The model label is the display name the provider registered (`Model.name`), falling back to the cleaned model id. Renames in a live catalog such as the AI workstation's reach the footer without a pi-bar update; a trailing routing marker such as ` (default)` is not shown.
 - Separators have two spaces on each side by default, for a roomier display.
 - Separator padding reduces to one space per side before content is compacted. CWD then compacts from its preferred path to `parent/project`, then `project`; context window size is omitted when needed. An enabled provider prefix can yield before the model name is clipped.
 - **The active task never occupies the footer.** It replaces pi's "Working..." text in the working status row above the editor, so the footer stays one line and the editor does not move when a task starts or ends. The host truncates a long task to the terminal width.

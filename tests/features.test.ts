@@ -176,6 +176,35 @@ test("provider formatting uses routing provider, preserves default names and str
 			assert.equal(formatModelName({ id, provider }, true), `${provider}/${name}`);
 		}
 	}
+
+test("footer uses the provider-registered model name so catalog renames propagate", () => {
+	// The AI workstation registers the catalog name; a friendly catalog name must
+	// reach the footer without any pi-bar mapping.
+	assert.equal(
+		formatModelName({ id: "DeepSeek-V4.1-Flash-1017-EXL3-EAQ-v1-2.9bpw", name: "DeepSeek 4.1 Flash", provider: "ai-workstation" }),
+		"DeepSeek 4.1 Flash",
+	);
+	assert.equal(
+		formatModelName({ id: "GLM-5.3-Flash-Optimized", name: "GLM 5.3 Flash (default)" }),
+		"GLM 5.3 Flash",
+		"a routing marker on the registered name is not part of the model name",
+	);
+	assert.equal(
+		formatModelName({ id: "Qwen3.8-27B", name: "\x1b[35mQwen 3.8\x1b[0m", provider: "ai-workstation" }, true),
+		"ai-workstation/Qwen 3.8",
+		"registered names are sanitized and prefixed like id-based names",
+	);
+	assert.equal(
+		formatModelName({ id: "anthropic/claude-sonnet-4-5-20250929", name: "   " }),
+		"claude-sonnet-4-5",
+		"a blank registered name falls back to the cleaned id",
+	);
+	assert.equal(
+		formatModelName({ id: "DeepSeek-V4.1-Flash-1017-EXL3-EAQ-v1-2.9bpw", name: "DeepSeek (default) V4.1" }),
+		"DeepSeek (default) V4.1",
+		"only a trailing routing marker is removed",
+	);
+});
 	assert.equal(formatModelName(undefined, true), "no-model");
 	assert.equal(formatModelName({ id: "test" }, true), "test");
 	assert.equal(formatModelName({ id: "\x1b[31mvendor/model\x1b[0m", provider: "openrouter\x1b]0;title\x07" }, true), "openrouter/model");

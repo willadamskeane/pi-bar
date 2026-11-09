@@ -189,14 +189,26 @@ function formatTokens(n: number): string {
 	return `${n}`;
 }
 
+/**
+ * Prefer the display name the provider registered for the model (`Model.name`).
+ * Catalogs such as the AI workstation publish that name, so a renamed or
+ * replaced model reaches the footer without a hardcoded mapping. Fall back to
+ * the id with its namespace and date stamp removed when no name is supplied.
+ */
 export function formatModelName(
-	model: { id: string; provider?: string } | undefined,
+	model: { id: string; name?: string; provider?: string } | undefined,
 	showProvider = false,
 ): string {
 	const id = stripTerminalControls(model?.id ?? "");
 	if (!id) return "no-model";
-	const base = id.split("/").filter(Boolean).at(-1) ?? id;
-	const name = base.replace(/-\d{8}$/, "").replace(/-\d{4}-\d{2}-\d{2}$/, "");
+	// Some providers append a routing marker to the registered name, for example
+	// "Qwen 3.8 (default)"; it describes the current selection, not the model.
+	const registered = stripTerminalControls(model?.name ?? "")
+		.replace(/\s*\(default\)\s*$/i, "")
+		.trim();
+	const fromId = id.split("/").filter(Boolean).at(-1) ?? id;
+	const fallback = fromId.replace(/-\d{8}$/, "").replace(/-\d{4}-\d{2}-\d{2}$/, "");
+	const name = registered || fallback;
 	// The namespace in a model ID is not necessarily its routing provider.
 	const provider = stripTerminalControls(model?.provider ?? "");
 	return showProvider && provider ? `${provider}/${name}` : name;
