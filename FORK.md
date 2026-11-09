@@ -41,7 +41,7 @@ Pi clones the fork, resets it to the remote `main` on each start/`/reload`, and 
   ```
 
 `main` is the fork's default branch, so scheduled workflows are allowed to run from it. Do not expect this fork's
-`main` to stay a byte-for-byte mirror of upstream — it always carries these two commits on top.
+`main` to stay a byte-for-byte mirror of upstream — it always carries these patches on top (one commit).
 
 ## Tests
 
